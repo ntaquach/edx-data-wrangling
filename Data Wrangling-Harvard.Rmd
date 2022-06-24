@@ -1,0 +1,377 @@
+---
+title: "edX Data Wrangling Codes and Results"
+author: "Frank"
+date: "`r format(Sys.Date())`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.width=10, fig.height=8)
+```
+
+```{css, echo=FALSE}
+h1, h4 {
+  text-align: center;
+  color: black;
+  font-weight: bold;
+}
+
+/* Whole document: */
+body{
+  font-family: Times New Roman;
+  font-size: 16pt;
+}
+/* Headers */
+h1,h2,h3,h4,h5,h6{
+  font-size: 24pt;
+}
+
+<style type="text/css">
+body, td {
+   font-size: 16px;
+}
+code.r{
+  font-size: 16px;
+}
+pre {
+  font-size: 16px
+}
+</style>
+  
+```
+
+## Introduction
+
+These are the codes I used for the edX Data Wrangling Course, offered by Harvard University. Feel free to use as an example and reference and replicate the codes if needed. As always, comments are welcomed. 
+
+# Section 1: Data Import
+
+## Assessment Part 2: Data Import
+
+```{r message=F,warning=F}
+url <- "https://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/wdbc.data"
+library(readr)
+data <- read_csv(url,col_names = F)
+nrow(data) #calculate number of rows
+ncol(data) #calculate number of columns
+```
+
+# Section 2: Tidy Data
+
+## Assessment Part 2: Reshaping Data
+
+### CO2 dataset questions
+
+```{r message=F,warning=F}
+library(tidyverse)
+library(dslabs)
+co2
+
+co2_wide <- data.frame(matrix(co2, ncol = 12, byrow = TRUE)) %>% 
+      setNames(1:12) %>%
+    mutate(year = as.character(1959:1997))
+co2_wide
+
+co2_tidy <- gather(co2_wide,month,co2,-year)
+co2_tidy
+
+co2_tidy %>% ggplot(aes(as.numeric(month), co2, color = year)) + geom_line()
+
+```
+
+### Admission dataset questions
+
+```{r message=F,warning=F}
+library(dslabs)
+data(admissions)
+dat <- admissions %>% select(-applicants)
+
+dat_tidy <- spread(dat, gender,admitted)
+
+tmp <- gather(admissions, key, value, admitted:applicants)
+tmp
+
+tmp2 <- unite(tmp,column_name,c(key,gender))
+```
+
+## Assessment: Combining Tables
+
+```{r message=F,warning=F}
+library(Lahman)
+top <- Batting %>% 
+  filter(yearID == 2016) %>%
+  arrange(desc(HR)) %>%    # arrange by descending HR count
+  slice(1:10)    # take entries 1-10
+top %>% as_tibble()
+
+People %>% as_tibble()
+
+top_names <- top %>% left_join(People) %>%
+    select(playerID, nameFirst, nameLast, HR)
+
+top_salary <- Salaries %>% filter(yearID == 2016) %>%
+  right_join(top_names) %>%
+  select(nameFirst, nameLast, teamID, HR, salary)
+
+award_players <- AwardsPlayers %>% filter(yearID == 2016)
+
+q7_a <- semi_join(top,award_players)
+q7_b <- anti_join(award_players,top) #there are identical playerID; thus, we need to count unique obs using the code below
+length(unique(q7_b$playerID))
+```
+## Assessment: Web Scraping
+
+Question 1: Which of the first four nodes are tables of team payroll? 
+
+```{r message=F,warning=F}
+library(rvest)
+url <- "https://web.archive.org/web/20181024132313/http://www.stevetheump.com/Payrolls.htm"
+h <- read_html(url)
+
+nodes <- html_nodes(h, "table")
+
+html_text(nodes[[6]])
+
+lapply(nodes[1:4], html_table)
+```
+
+Question 2: For the last 3 components of nodes, which of the following are true?
+
+```{r message=F,warning=F}
+node_length <- length(nodes)
+
+html_table(nodes[[node_length]]) #last node
+
+html_table(nodes[[node_length-1]]) #second to last node
+
+html_table(nodes[[node_length-2]]) #third to last node
+
+```
+
+Question 3: 
+
+```{r message=F,warning=F}
+tab_1 <- html_table(nodes[[10]])
+tab_1
+tab_2 <- html_table(nodes[[19]])
+tab_2
+
+tab1_new <- tab_1[-1, -1] 
+names(tab1_new) <- c("Team", "Payroll", "Average")
+
+tab2_new <- tab_2[-1,]
+names(tab2_new) <- c("Team", "Payroll", "Average")
+
+library(readr)
+tab12 <- full_join(tab1_new,tab2_new, by = "Team") %>% 
+  nrow()
+```
+
+Question 4-5:
+
+```{r message=F,warning=F}
+library(rvest)
+library(tidyverse)
+url <- "https://en.wikipedia.org/w/index.php?title=Opinion_polling_for_the_United_Kingdom_European_Union_membership_referendum&oldid=896735054"
+h <- read_html(url)
+
+tab <- html_nodes(h, "table")
+lapply(tab[1:42], html_table)
+
+tab[[6]] %>% html_table(fill = TRUE) %>% names() 
+```
+
+# Section 3: String Processing
+
+```{r message=F,warning=F}
+not_inches <- function(x, smallest = 50, tallest = 84) {
+  inches <- suppressWarnings(as.numeric(x))
+  ind <- is.na(inches) | inches < smallest | inches > tallest 
+  ind
+}
+not_inches(85)
+
+library(stringr)
+pattern <- "\\d|ft"
+yes <- c("1", "5 ft", "9")
+no <- c("12", "123", " 1", "a4", "b")
+s <- c(yes, no)
+str_view_all(s, pattern)
+
+animals <- c("cat", "puppy", "Moose", "MONKEY")
+pattern <- "[a-z]"
+str_detect(animals, pattern)
+
+animals <- c("cat", "puppy", "Moose", "MONKEY")
+pattern <- "[A-Z]$"
+str_detect(animals, pattern)
+
+```
+
+## Case Study: Extracting a Table from PDF
+
+```{r message=F,warning=F}
+library(dslabs)
+data("research_funding_rates")
+research_funding_rates 
+```
+
+## Assessment Part 2: String Processing Part 3
+
+```{r message=F,warning=F}
+library(rvest)
+library(tidyverse)
+library(stringr)
+url <- "https://en.wikipedia.org/w/index.php?title=Opinion_polling_for_the_United_Kingdom_European_Union_membership_referendum&oldid=896735054"
+tab <- read_html(url) %>% html_nodes("table")
+polls <- tab[[6]] %>% html_table(fill = TRUE)
+
+names(polls) <- c("dates", "remain", "leave", "undecided", "lead", "samplesize", "pollster", "poll_type", "notes") #rename columns
+library(dplyr) #load dplyr to clean data
+pattern <- "^(\\d{2}).*(\\d*)%" #pattern of data in Remain column
+polls_tidy <- polls %>% setNames(c("dates", "remain", "leave", "undecided", "lead", "samplesize", "pollster", "poll_type", "notes")) %>% filter(nchar(remain) == "3" | nchar(remain) == "5") 
+
+as.numeric(str_replace(polls_tidy$remain, "%", ""))/100
+parse_number(polls_tidy$remain)/100
+
+str_replace(polls_tidy$undecided,"N/A","0")
+
+temp <- str_extract_all(polls_tidy$dates, "\\d+\\s[a-zA-Z]{3,5}")
+end_date <- sapply(temp, function(x) x[length(x)]) # take last element (handles polls that cross month boundaries)
+end_date
+```
+
+# Section 4: Dates, Times, and Text Mining
+
+## Assessment Part 1: Dates, Times, and Text Mining
+
+### Brexit data
+```{r message=F,warning=F}
+library(dslabs)
+library(lubridate)
+options(digits = 3)    # 3 significant digits
+
+dates <- c("09-01-02", "01-12-07", "02-03-04")
+dmy(dates) #either way => need more info
+
+data(brexit_polls)
+month <- as.data.frame(months(brexit_polls$startdate))
+sum(with(month,months(brexit_polls$startdate) == "April"))
+
+enddate <- as.data.frame(round_date(brexit_polls$enddate,"week"))
+sum(with(enddate,round_date(brexit_polls$enddate,"week") == "2016-06-12"))
+  
+sum(weekdays(brexit_polls$enddate) == "Monday")
+sum(weekdays(brexit_polls$enddate) == "Tuesday")
+sum(weekdays(brexit_polls$enddate) == "Wednesday")
+sum(weekdays(brexit_polls$enddate) == "Thursday")
+sum(weekdays(brexit_polls$enddate) == "Friday")
+sum(weekdays(brexit_polls$enddate) == "Saturday")
+sum(weekdays(brexit_polls$enddate) == "Sunday")
+
+table(weekdays(brexit_polls$enddate))
+```
+
+### Movie Lens data
+
+```{r message=F, warning=F}
+data("movielens")
+library(dplyr)
+movielens <- movielens %>% mutate(datetime = as_datetime(movielens$timestamp)) %>%
+   count(year(datetime)) %>%
+   arrange(desc(n))
+``` 
+
+## Assessment Part 2: Dates, Times, and Text Mining
+
+### Pride and Prejudice
+
+```{r message=F,warning=F}
+library(tidyverse)
+library(gutenbergr)
+library(tidytext)
+library(Rcpp)
+options(digits = 3)
+
+library(dplyr)
+gutenberg_metadata %>%
+  filter(str_detect(title, "Pride and Prejudice")) 
+gutenberg_works(languages = "en") %>% filter(str_detect(title, "Pride and Prejudice"))
+words <- gutenberg_download(1342) %>% unnest_tokens(word, text) # total words
+words <- gutenberg_download(1342) %>% unnest_tokens(word, text) %>% anti_join(stop_words, by = 'word')
+
+gutenberg_download(1342) %>% unnest_tokens(word, text)  %>% anti_join(stop_words, by = 'word') %>% filter(!str_detect(word, "\\d+")) %>% count(word) %>% filter(n>= 100) %>% arrange(desc(n))
+```
+
+### Afinn
+
+```{r message=F,warning=F}
+library(textdata)
+afinn <- get_sentiments("afinn")
+
+words <- gutenberg_download(1342) %>% unnest_tokens(word, text) %>% anti_join(stop_words, by = 'word') %>% filter(!str_detect(word, "\\d+"))
+
+afinn_sentiments <- words %>% inner_join(afinn) %>% summarise(n = mean(value > 0), n1 = sum(value == 4)) #dataset changed, proportion of > 0 should be 0.588, while the answer is 0.563
+```
+
+
+# Final Assessment: Puerto Rico Hurricane Mortality
+
+```{r message=F,warning=F}
+library(tidyverse)
+library(tidyr)
+library(pdftools)
+options(digits = 3)    # report 3 significant digits
+
+fn <- system.file("extdata", "RD-Mortality-Report_2015-18-180531.pdf", package="dslabs")
+system("cmd.exe", input = paste("start", fn))
+
+txt <- pdf_text(fn)
+x <- str_split(txt[9],"\n")
+x; length(x) #number of entry
+
+s <- x[[1]]
+s; length(s)
+
+library(stringr)
+s <- s %>% str_trim()
+s
+s[[1]]
+
+#Question 6
+header_index <- str_which(s,"2015")
+header_index
+
+#Question 7
+header <- header_index [1] %>% str_split("\\s+",simplify = T)
+header
+
+#Question 8
+tail_index  <- str_which(s, "Total")
+tail_index
+
+#Question 9
+n <- s %>% str_count("\\d+")
+sum(n == 1); which(n == 1)
+
+#Question 10
+
+out <- c(1:header_index, which(n==1), tail_index:length(s))
+s <- s[-out]
+length(s)
+
+#Question 12
+s <- str_split_fixed(s, "\\s+", n = 6) [,1:5]
+s
+s_df <- as.data.frame(s) %>% filter(!row_number() %in% c(1:2,7,10))
+mean(as.numeric(s_df$V3[2:31])) #mean per day 2015
+mean(as.numeric(s_df$V5[2:20])) #sep 1-19
+mean(as.numeric(s_df$V5[21:31])) #sep 20-30
+
+#Question 13
+# tab <- tab %>% gather(year, deaths, -day) %>%
+    #mutate(deaths = as.numeric(deaths))
+# tab
+
+```
+
